@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <!-- Cargar Leaflet -->
+<link rel="stylesheet" type="text/css" href="CSS/leaflet.css">
+<script src="JS/leaflet.js"></script>
+
+<script src="plot_lat_csv/plotly-latest.min.js"></script>
+<script src="PLOTLY/plotly-2.24.1.min.js"></script>
+
+
+  <title>IGP</title>
+
+<style>
+    #map {
+      width: 50%;
+      height: 550px;
+      float:left;
+    }
+
+    #chartDiv {
+      width: 50%;
+      height: 300px;
+      float:left;
+    }
+
+</style>
+
+
+</head>
+
+<body>
+
+  
+  <div id="map"></div>
+
+ 
+
+  <div id="chartDiv">
+
+        <div id="search" class="search">
+      <input type="text" name="filter" class="block" placeholder=" Filter by a plant type.. (e.g. Tulip)" id="filter" />
+      <div class="collection-container">
+        <p class="collection"></p>
+      </div>
+    </div>
+
+<div id="plot"></div>
+<div id="plot3"></div>
+<div id="plot2"> </div>
+
+
+
+<div style="overflow-y: auto; max-height: 100px;">
+    <table class="table table-striped table-hover table-sm" id="dataTable" style="font-size:10px">
+    <thead class="thead-dark">
+      <tr>
+        <th scope="col">Id</th>
+        <th scope="col">Departamento</th>
+        <th scope="col">Referencia</th>
+        <th scope="col">Magnitud</th>
+        <th scope="col">Profundidad</th>
+        <th scope="col">Fecha Evento</th>
+      </tr>
+    </thead>
+
+    <tbody id="table_body"></tbody>
+
+    </table>
+</div>
+
+  </div>
+
+ 
+
+  <script src="jquery.js"></script>
+
+
+  <script>
+
+var dataTable = document.getElementById('dataTable');
+var tableBody = document.getElementById('table_body');
+
+const search = document.getElementById("filter");
+const collectionContainer = document.querySelector(".collection-container");
+const collection = document.querySelector(".collection");
+// the map
+ var map = L.map('map').setView([-12.066291, -77.027038], 5);
+
+var style = {
+  radius: 20,
+  fillColor: "green",
+  color: "green",
+  weight: 1,
+  opacity: 1,
+  fillOpacity: 0.5,
+};
+let calles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png?{foo}', {foo: 'bar', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+
+// a Leaflet marker is used by default to symbolize point features.
+$.getJSON("data/comercial/IGP_1.geojson",  function (data)  {
+    treesFeatureLayer.addData(data);
+});
+
+var treesFeatureLayer = L.geoJson(null, {
+    pointToLayer: function (feature, latlng) {
+    var r = feature.properties.prof;
+    style.radius = parseInt(r) / 7;
+    return L.circleMarker(latlng, style);
+    },
+});
+
+
+treesFeatureLayer
+  .bindTooltip(
+    function (layer) {
+      return `<b>Id: </b>${layer.feature.properties.objectid} <br> <b>Magnitud:</b> ${layer.feature.properties.magnitud} <br> <b>Profundidad: </b>${layer.feature.properties.prof}`; //merely sets the tooltip text
+    },
+    {} //then add your options
+  )
+.addTo(map);
+
+
+
+map.on("zoom move", rerenderAll);
+treesFeatureLayer.on("load", rerenderAll);
+// HTML related
+//dataTable.addEventListener("click", zoomFromTable);
+
+    var categories=[];
+    var data=[];
+    //var markers=[];
+
+
+
+
+// functions List
+
+function rerenderAll() {
+  // update and rerender the chart
+  var scatterPlotDataArray = [];
+  treesFeatureLayer.eachLayer(function(layer) {
+    scatterPlotDataArray.push({
+      x: layer.feature.properties.magnitud,
+      y: layer.feature.properties.prof,
+      featureId: layer.feature.properties.objectid,
+      lat: layer.feature.properties.lat,
+      lon: layer.feature.properties.lon,
+      dep: layer.feature.properties.departamento,
+      ref: layer.feature.properties.ref,
+      mag: layer.feature.properties.magnitud,
+      prof: layer.feature.properties.prof,
+      fecha: layer.feature.properties.fechaevento,
+    });
+  });
+
+
+//PLOTLY CARGAR
+var x_1 = scatterPlotDataArray.map(item => item.x);
+var y_1 = scatterPlotDataArray.map(item => item.y);
+var lat_1 = scatterPlotDataArray.map(item => item.lat);
+var lon_1 = scatterPlotDataArray.map(item => item.lon);
+var featureIds = scatterPlotDataArray.map(item => item.featureId);
+
+//console.log(x_1);
+
+// Definir la función handleChartHover
+
+
+//AÑADI GPT
+function updateScatterPlot() {
+  var bounds = map.getBounds();
+  var filteredData = scatterPlotDataArray.filter(function(d) {
+    var latlng = L.latLng(d.lat, d.lon);
+    return bounds.contains(latlng);
+  });
+  
+
+  var xFiltered = filteredData.map(item => item.x);
+  var yFiltered = filteredData.map(item => item.y);
+  var atext = filteredData.map(item => item.featureId);
+
+   // Actualizar el atributo text de la traza trace1
+  //trace1.text = atext;
+  
+  Plotly.update(graphDiv, {
+    x: [xFiltered],
+    y: [yFiltered],
+    text: [atext],
+  });
+
+
+
+}
+
+// Actualizar el scatter plot al hacer zoom en el mapa
+map.on('zoomend', function() {
+  updateScatterPlot();
+});
+
+
+search.addEventListener("input", () => searchStates(search.value));
+const searchStates = (searchText) => {
+  let matches = scatterPlotDataArray.filter((item) => {
+    const regex = new RegExp(`${searchText}`, "gi");
+    return item.dep.match(regex);
+  });
+
+  if (searchText.length === 0 || matches.length === 0) {
+    matches = [];
+    collectionContainer.style.display = "none";
+  } else {
+    collectionContainer.style.display = "block";
+  }
+
+  outputHtmlMatches(matches);
+};
+
+function outputHtmlMatches(matches) {
+  if (matches.length > 0) {
+    const html = matches
+      .map(
+        (item) =>
+          `<div class="collection-item" data-feature-id="${item.dep}">${item.dep}</div>`
+      )
+      .join("");
+    collection.innerHTML = html;
+
+    const collectionItems = document.querySelectorAll(".collection-item");
+    collectionItems.forEach((item) => {
+      item.addEventListener("click", zoomFromSearch);
+    });
+  }
+}
+
+function zoomFromSearch(event) {
+  const selectedFeatureId = event.currentTarget.dataset.featureId;
+
+  treesFeatureLayer.eachLayer(function (layer) {
+    if (layer.feature.properties.departamento == selectedFeatureId) {
+      layer.setStyle({
+        opacity: 1,
+        fillOpacity: 0.5,
+        zIndex: 10000,
+        fillColor: "red",
+        color: "red",
+      });
+    } else {
+      layer.setStyle({
+        opacity: 0.01,
+        fillOpacity: 0.05,
+      });
+    }
+  });
+
+  const selectedScatterDataArray = scatterPlotDataArray.filter(
+    (item) => item.dep === selectedFeatureId
+  );
+
+  const pointNumbers = selectedScatterDataArray.map((item) =>
+    scatterPlotDataArray.indexOf(item)
+  );
+
+  Plotly.restyle(graphDiv, {
+    marker: {
+      color: scatterPlotDataArray.map((_, index) =>
+        pointNumbers.includes(index) ? "red" : "green"
+      ),
+      size: scatterPlotDataArray.map((_, index) =>
+        pointNumbers.includes(index) ? 16 : 6
+        ),
+    },
+  });
+}
+
+
+
+// Crear el gráfico de dispersión Plotly
+var graphDiv = document.getElementById('plot');
+var graphDiv_2 = document.getElementById('plot2');
+var graphDiv_3 = document.getElementById('plot3');
+
+var selectedVariable = 'magnitud';
+
+
+
+
+//HISTOGRAMA ACUMULATIVO
+var trace_3 = {
+
+    type: 'histogram',
+    //xbins: {
+    //end: 7,
+    //size: 0.1,
+    //start: 0 
+    //},
+    marker:{
+    color: '#FFD733',
+    line: {color: 'black', width: 1}
+  },
+  cumulative: {enabled: true}
+  };
+
+var data_3 = [trace_3];
+
+   var updatemenus= [{
+        x: 0.8,
+        yanchor: 'top',
+buttons: [{
+            method: 'restyle',
+            args: [],
+            label: 'Eje x'
+        }, {
+
+            args: ['x', [x_1]],
+            label: 'Magnitud'
+        }, {
+            method: 'restyle',
+            args: ['x', [y_1]],
+            label: 'profundidad'
+        }, {
+            method: 'restyle',
+            args: ['x', [x_1]],
+            label: 'Reportes'
+        }, {
+            method: 'restyle',
+            args: ['x', [y_1]],
+            label: 'objectid'
+        }],
+        direction: 'down',
+        pad: {'r': 10, 't': 10},
+        showactive: true,
+        //type: 'buttons',
+        x: 0.2,
+        xanchor: 'right',
+        y: 1.3,
+        yanchor: 'top'
+        }]
+
+var layout_3 = { 
+  title: 'HISTOGRAMA ACUNULATIVO SISMOS 2021 - 2022 PERU',
+  font: {size: 18},
+  //annotations: annotations,
+      updatemenus: updatemenus
+};
+
+
+Plotly.newPlot('plot3', data_3, layout_3);
+
+
+//console.log(event.layout_3.updatemenus[0].buttons);
+
+
+graphDiv_3.on('plotly_afterplot', function() {
+//console.log('hokla');
+     var selectedButton = layout_3.updatemenus[0]['active'];
+     
+    if (selectedButton === 1) {
+        selectedVariable = 'magnitud';
+    } 
+    else if (selectedButton === 2) {
+        selectedVariable = 'prof';
+    }
+    else if (selectedButton === 3) {
+        selectedVariable = 'magnitud';
+    }
+    else if (selectedButton === 4) {
+        selectedVariable = 'prof';
+    }
+
+});
+
+
+
+
+// Función para manejar el evento de hover en el scatter plot
+graphDiv_3.on('plotly_click', function(event) {
+  var pointsCount = event.points[0].x;
+  //console.log(pointsCount);
+      treesFeatureLayer.eachLayer(function (layer) {
+        var valueToCompare = layer.feature.properties[selectedVariable];
+
+        if (valueToCompare <= pointsCount) {
+            layer.setStyle({
+                opacity: 1,
+                fillOpacity: 0.5,
+                zIndex: 10000,
+                fillColor: "red",
+                color: "red",
+            });
+        } else {
+            layer.setStyle({
+                opacity: 0.01,
+                fillOpacity: 0.05,
+            });
+        }
+    });
+
+  
+
+});
+
+// Función para manejar el evento de deshover en el scatter plot
+graphDiv_3.on('plotly_unhover', function(event) {
+  treesFeatureLayer.eachLayer(function (layer) {
+    layer.setStyle({
+      opacity: 1,
+      fillOpacity: 0.5,
+      zIndex: 0,
+      fillColor: "green",
+      color: "green",
+    });
+  });
+});
+
+
+
+
+
+
+//HISTOGRAMA
+var trace2 = {
+
+        marker: {
+        color: '#C8A2C8',
+        line: {
+            width: 2.5
+        }
+    },
+    type: 'histogram',
+    //xbins: {
+    //end: 5,
+    //size: 0.06,
+    //start: 0 
+    //}
+  };
+var data2 = [trace2];
+   var updatemenus= [{
+        x: 0.8,
+        yanchor: 'top',
+buttons: [{
+            method: 'restyle',
+            args: [],
+            label: 'Eje x'
+        }, {
+            method: 'restyle',
+            args: ['x', [x_1]],
+            label: 'Magnitud'
+        }, {
+            method: 'restyle',
+            args: ['x', [y_1]],
+            label: 'profundidad'
+        }, {
+            method: 'restyle',
+            args: ['x', [x_1]],
+            label: 'Reportes'
+        }, {
+            method: 'restyle',
+            args: ['x', [y_1]],
+            label: 'objectid'
+        }],
+        direction: 'down',
+        pad: {'r': 10, 't': 10},
+        showactive: true,
+        //type: 'buttons',
+        x: 0.2,
+        xanchor: 'right',
+        y: 1.3,
+        yanchor: 'top'
+        }]
+
+var layout2 = { 
+  title: 'SISMOS 2021 - 2022 PERU',
+  font: {size: 18},
+  //annotations: annotations,
+      updatemenus: updatemenus
+};
+
+Plotly.newPlot('plot2', data2, layout2);
+
+// Función para manejar el evento de hover en el scatter plot
+graphDiv_2.on('plotly_hover', function(event) {
+  var pointIndices = event.points[0].pointNumbers;
+  //console.log(event.points);
+  var selectedFeatureIds = pointIndices.map(index => featureIds[index]);
+
+  treesFeatureLayer.eachLayer(function (layer) {
+    if (selectedFeatureIds.includes(layer.feature.properties.objectid)) {
+      layer.setStyle({
+        opacity: 1,
+        fillOpacity: 0.5,
+        zIndex: 10000,
+        fillColor: "red",
+        color: "red",
+      });
+    } else {
+      layer.setStyle({
+        opacity: 0.01,
+        fillOpacity: 0.05,
+      });
+    }
+  });
+});
+
+// Función para manejar el evento de deshover en el scatter plot
+graphDiv_2.on('plotly_unhover', function(event) {
+  treesFeatureLayer.eachLayer(function (layer) {
+    layer.setStyle({
+      opacity: 1,
+      fillOpacity: 0.5,
+      zIndex: 0,
+      fillColor: "green",
+      color: "green",
+    });
+  });
+});
+
+
+
+
+//SCATTER
+var trace1 = {
+  x: x_1,
+  y: y_1,
+  text: featureIds,
+  mode: 'markers',
+  marker: {
+    color: 'orange',
+  },
+  type: 'scatter'
+};
+
+var data_1 = [ trace1 ];
+
+var layout = { 
+  title: 'Responsive to window\'s size!',
+  font: {size: 18},
+  hovermode: 'closest', // Agregar esta línea para activar el modo hover más cercano
+  xaxis: {
+    range: [0,10]
+
+  },
+    yaxis: {
+    range: [0,250]
+
+  }
+
+};
+
+var config = {responsive: true}
+
+var plot = Plotly.newPlot(graphDiv, data_1, layout, config);
+
+// Función para manejar el evento de hover en el scatter plot
+graphDiv.on('plotly_hover', function(event) {
+  var pointIndex = event.points[0].text;
+  //console.log(event.points);
+  var selectedFeatureId = [pointIndex];
+
+  treesFeatureLayer.eachLayer(function (layer) {
+    if (layer.feature.properties.objectid == selectedFeatureId) {
+      layer.setStyle({
+        opacity: 1,
+        fillOpacity: 0.5,
+        zIndex: 10000,
+        fillColor: "red",
+        color: "red",
+      });
+    } else {
+      layer.setStyle({
+        opacity: 0.01,
+        fillOpacity: 0.05,
+      });
+    }
+  });
+});
+
+// Función para manejar el evento de deshover en el scatter plot
+graphDiv.on('plotly_unhover', function(event) {
+  treesFeatureLayer.eachLayer(function (layer) {
+    layer.setStyle({
+      opacity: 1,
+      fillOpacity: 0.5,
+      zIndex: 0,
+      fillColor: "green",
+      color: "green",
+    });
+  });
+});
+
+
+//SCATTER ONCLICK
+graphDiv.on('plotly_click', function(event) {
+  var pointIndex = event.points[0].text;
+  var selectedFeatureId = [pointIndex];
+
+//PARA ELE MAPA ZOOM
+     var zoomto = scatterPlotDataArray.find(item => item.featureId == selectedFeatureId);
+
+    if (zoomto) {
+      map.setView([zoomto.lat, zoomto.lon], 20);
+    }
+
+//PARA LA TABLA ZOOM
+        const tableRows = document.querySelectorAll('tbody tr');
+      tableRows.forEach((row) => {
+      const rowId = row.getAttribute('id');
+        console.log(rowId);
+      if (rowId == selectedFeatureId) {
+        row.style.backgroundColor = 'green';
+      } else {
+        row.style.backgroundColor = ''; // reset background color for other rows
+      }
+    });
+
+});
+
+
+
+// update and rerender the TABLA
+  tableBody.innerHTML = "";
+          treesFeatureLayer.eachLayer(function (layer,index) {
+
+          var tr=document.createElement("tr");
+          tr.setAttribute("id",layer.feature.properties.objectid);
+
+
+
+          var th=document.createElement("th");
+          th.setAttribute("scope","row");
+          th.innerHTML=layer.feature.properties.objectid;
+
+          var tdName=document.createElement("td");
+          tdName.innerHTML=layer.feature.properties.ref;
+          var tdPMax=document.createElement("td");
+          tdPMax.innerHTML=layer.feature.properties.magnitud;
+          var tdPMin=document.createElement("td");
+          tdPMin.innerHTML=layer.feature.properties.prof;
+
+          var tdPMar=document.createElement("td");
+          tdPMar.innerHTML=layer.feature.properties.magnitud;
+          var tdPVal=document.createElement("td");
+          tdPVal.innerHTML=layer.feature.properties.prof;
+
+          tr.appendChild(th);
+
+          tr.appendChild(tdName);
+          tr.appendChild(tdPMax);
+          tr.appendChild(tdPMin);
+
+          tr.appendChild(tdPMar);
+          tr.appendChild(tdPVal);
+
+            // Agregar el controlador de eventos a la fila de la tabla
+  tr.addEventListener("click", function () {
+    var selectedFeatureId = layer.feature.properties.objectid;
+    //PAAR EL MAPA ZOOM
+    var zoomto = scatterPlotDataArray.find(item => item.featureId == selectedFeatureId);
+
+    if (zoomto) {
+      map.setView([zoomto.lat, zoomto.lon], 20);
+    }
+
+//PAR LA TABLA ZOOM
+        const tableRows = document.querySelectorAll('tbody tr');
+      tableRows.forEach((row) => {
+      const rowId = row.getAttribute('id');
+        console.log(rowId);
+      if (rowId == selectedFeatureId) {
+        row.style.backgroundColor = 'red';
+      } else {
+        row.style.backgroundColor = ''; // reset background color for other rows
+      }
+    });
+
+
+  });
+
+                    //para hober y no se acumule
+          tableBody.appendChild(tr);
+
+          categories.push(layer.feature.properties.magnitud);
+          data.push(layer.feature.properties.prof);
+
+        });
+
+
+
+
+
+} //del rerenderAll
+
+
+
+
+  rerenderAll();
+
+  </script>
+</body>
+
+</html>
